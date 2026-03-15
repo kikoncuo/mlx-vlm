@@ -129,12 +129,24 @@ def find_all_linear_names(model):
         "vision_resampler",
         "aligner",
     ]
+    # DeltaRNN gate projections (used by Qwen3.5's GatedDeltaNet layers).
+    # These control the recurrent state dynamics (decay gate and update rate).
+    # Applying LoRA to them destabilizes the internal state and corrupts
+    # generation output. Safe to skip — the other projections (in_proj_qkv,
+    # in_proj_z, out_proj) still get LoRA and provide sufficient adaptation.
+    deltarnn_gate_keywords = [
+        "in_proj_a",
+        "in_proj_b",
+    ]
     for name, module in model.named_modules():
         if any(mm_keyword in name for mm_keyword in multimodal_keywords):
             continue
         if isinstance(module, cls) or isinstance(module, quantized_cls):
             names = name.split(".")
-            lora_module_names.add(names[0] if len(names) == 1 else names[-1])
+            module_name = names[0] if len(names) == 1 else names[-1]
+            if module_name in deltarnn_gate_keywords:
+                continue
+            lora_module_names.add(module_name)
 
     if "lm_head" in lora_module_names:  # needed for 16-bit
         lora_module_names.remove("lm_head")
